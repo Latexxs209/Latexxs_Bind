@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr" style="background:transparent !important;" allowtransparency="true">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Keybinds Tablet</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="overlay"></div>
+  <div class="tablet" id="tablet">
+    <div class="tablet-header">
+      <img src="images/logo.png" class="logo" alt="Logo" />
+      <h1 id="server-name">Keybinds</h1>
+      <button class="close-btn" onclick="closeMenu()" title="Fermer"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="tablet-main">
+      <aside class="tablet-sidebar" id="sidebar"></aside>
+      <section class="tablet-content">
+        <div class="command-search">
+          <input type="text" id="search" placeholder="Recherche une commande..." oninput="filterCommands()"/>
+          <button id="theme-toggle" title="Switch thème"><i class="fa-solid fa-moon"></i></button>
+        </div>
+        <div class="command-list" id="command-list"></div>
+      </section>
+    </div>
+    <div class="tips" id="tips"></div>
+  </div>
+  <script>
+    document.documentElement.style.background = "transparent";
+    document.body.style.background = "transparent";
+
+    let activeCategory = 0;
+    let allCategories = [];
+    let tipsArr = [];
+    let theme = "dark";
+    let favorites = JSON.parse(localStorage.getItem('keybind_favs')||"[]");
+
+    function setupCategories(categories) {
+
+      allCategories = [
+        {
+          name: "Favoris",
+          icon: "fa-star",
+          commands: favorites
+        },
+        ...(categories || [])
+      ];
+      showCategories();
+      showCommands();
+    }
+
+    function showCategories() {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.innerHTML = '';
+      allCategories.forEach((cat, idx) => {
+        const el = document.createElement('div');
+        el.className = 'sidebar-cat' + (idx === activeCategory ? ' active' : '');
+        el.innerHTML = (cat.icon ? `<i class="fa ${cat.icon}"></i> ` : '') + cat.name;
+        el.onclick = () => { activeCategory = idx; showCommands(); showCategories(); };
+        sidebar.appendChild(el);
+      });
+    }
+
+    function showCommands() {
+      const list = document.getElementById('command-list');
+      list.innerHTML = '';
+      if (!allCategories[activeCategory]) return;
+      let cmds = allCategories[activeCategory].commands;
+      if (activeCategory === 0 && cmds.length === 0) {
+
+        list.innerHTML = `<div style="text-align:center; color:#8ba7c9; padding:30px 0 0 0;font-size:1.1em;opacity:0.78">
+          <i class="fa fa-star"></i> Aucun favori.<br>
+          Cliquez sur <span class="fa fa-star"></span> à droite d'une commande pour l'ajouter ici.
+        </div>`;
+        return;
+      }
+      cmds.forEach((cmd, idx) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'command';
+        wrap.innerHTML = `
+          <span class="bind">${cmd.bind}</span>
+          <span class="desc">${cmd.description}</span>
+          <span class="fav${isFav(cmd)?' active':''}" title="Favori" onclick="toggleFav(event,${activeCategory},${idx})">
+            <i class="fa fa-star"></i>
+          </span>`;
+        list.appendChild(wrap);
+      });
+    }
+
+    function isFav(cmd) {
+      return favorites.some(e => e.bind === cmd.bind && e.description === cmd.description);
+    }
+
+    function toggleFav(e, catIdx, cmdIdx) {
+      e.stopPropagation();
+      const cmd = allCategories[catIdx].commands[cmdIdx];
+      const idx = favorites.findIndex(e => e.bind === cmd.bind && e.description === cmd.description);
+      if (idx > -1) favorites.splice(idx, 1);
+      else favorites.push(cmd);
+      localStorage.setItem('keybind_favs', JSON.stringify(favorites));
+      allCategories[0].commands = favorites;
+      showCommands();
+      showCategories();
+    }
+
+    function filterCommands() {
+      const input = document.getElementById('search').value.toLowerCase();
+      const list = document.querySelectorAll('.command');
+      list.forEach(cmd => {
+        const match = cmd.innerText.toLowerCase().includes(input);
+        cmd.style.display = match ? 'flex' : 'none';
+      });
+    }
+
+    function showTip() {
+      if (!tipsArr.length) return;
+      const tip = tipsArr[Math.floor(Math.random() * tipsArr.length)];
+      document.getElementById('tips').textContent = "Astuce : " + tip;
+    }
+
+    function closeMenu() {
+      document.getElementById('tablet').classList.remove('show');
+      document.getElementById('overlay').style.display = 'none';
+      fetch('https://Latexxs_keybind/close', { method: 'POST' });
+    }
+
+    function toggleTheme() {
+      theme = theme === "dark" ? "light" : "dark";
+      document.body.className = theme;
+      document.getElementById('theme-toggle').innerHTML = theme === "dark"
+        ? '<i class="fa-solid fa-moon"></i>' : '<i class="fa-solid fa-sun"></i>';
+    }
+
+
+    window.addEventListener('message', function(event) {
+      if (event.data.action === 'openKeybinds') {
+        favorites = JSON.parse(localStorage.getItem('keybind_favs') || "[]");
+
+        let loadedCategories = event.data.config.categories ? JSON.parse(JSON.stringify(event.data.config.categories)) : [];
+        setupCategories(loadedCategories);
+        tipsArr = event.data.config.tips || [];
+        document.getElementById('server-name').innerText = event.data.config.serverName || "Keybinds";
+        activeCategory = 0;
+        showTip();
+        document.getElementById('tablet').classList.add('show');
+        document.getElementById('overlay').style.display = 'block';
+        document.getElementById('search').value = '';
+        document.body.className = theme;
+      }
+    });
+
+    document.getElementById('overlay').onclick = function(e) { e.stopPropagation(); };
+    document.onkeydown = (e) => {
+      if(document.getElementById('tablet').classList.contains('show') && (e.key === 'Escape' || e.key === 'Esc')) closeMenu();
+    };
+    document.getElementById('theme-toggle').onclick = toggleTheme;
+  </script>
+</body>
+</html>
